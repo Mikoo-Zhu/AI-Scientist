@@ -171,7 +171,9 @@ def do_idea(
     shutil.copytree(base_dir, destination_dir, dirs_exist_ok=True)
     with open(osp.join(base_dir, "run_0", "final_info.json"), "r") as f:
         baseline_results = json.load(f)
-    baseline_results = {k: v["means"] for k, v in baseline_results.items()}
+    # Check if baseline_results is a dictionary before extracting means
+    if isinstance(baseline_results, dict):
+        baseline_results = {k: v["means"] for k, v in baseline_results.items()}
     exp_file = osp.join(folder_name, "experiment.py")
     vis_file = osp.join(folder_name, "plot.py")
     notes = osp.join(folder_name, "notes.txt")
@@ -198,6 +200,8 @@ def do_idea(
         )
         if model == "deepseek-coder-v2-0724":
             main_model = Model("deepseek/deepseek-coder")
+        elif model == "deepseek-reasoner":
+            main_model = Model("deepseek/deepseek-reasoner")
         elif model == "llama3.1-405b":
             main_model = Model("openrouter/meta-llama/llama-3.1-405b-instruct")
         else:
@@ -232,6 +236,8 @@ def do_idea(
             fnames = [exp_file, writeup_file, notes]
             if model == "deepseek-coder-v2-0724":
                 main_model = Model("deepseek/deepseek-coder")
+            elif model == "deepseek-reasoner":
+                main_model = Model("deepseek/deepseek-reasoner")
             elif model == "llama3.1-405b":
                 main_model = Model("openrouter/meta-llama/llama-3.1-405b-instruct")
             else:
