@@ -129,25 +129,42 @@ def worker(
         writeup,
         improvement,
         gpu_id,
+        log_individual_files,
+        engine,
 ):
     os.environ["CUDA_VISIBLE_DEVICES"] = str(gpu_id)
-    print(f"Worker {gpu_id} started.")
+    print(f"Worker {gpu_id} started processing on GPU {gpu_id}.")
     while True:
         idea = queue.get()
         if idea is None:
+            print(f"Worker {gpu_id} received None, exiting.")
             break
-        success = do_idea(
-            base_dir,
-            results_dir,
-            idea,
-            model,
-            client,
-            client_model,
-            writeup,
-            improvement,
-            log_file=True,
-        )
-        print(f"Completed idea: {idea['Name']}, Success: {success}")
+        
+        idea_name_for_log = idea.get('Name', 'Unnamed_Idea')
+        print(f"Worker {gpu_id} starting idea: {idea_name_for_log}")
+        
+        success = False
+        try:
+            success = do_idea(
+                base_dir,
+                results_dir,
+                idea,
+                model,
+                client,
+                client_model,
+                writeup,
+                improvement,
+                log_file=log_individual_files,
+                engine=engine,
+            )
+            print(f"Worker {gpu_id} completed idea: {idea_name_for_log}, Success: {success}")
+        except Exception as e:
+            print(f"Worker {gpu_id} encountered FATAL error processing idea {idea_name_for_log}: {e}")
+            import traceback
+            print(traceback.format_exc())
+            print(f"Worker {gpu_id} continuing to next idea despite error.")
+            success = False
+
     print(f"Worker {gpu_id} finished.")
 
 
@@ -161,6 +178,7 @@ def do_idea(
         writeup,
         improvement,
         log_file=False,
+        engine="semanticscholar",
 ):
     ## CREATE PROJECT FOLDER
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -251,7 +269,7 @@ def do_idea(
                 edit_format="diff",
             )
             try:
-                perform_writeup(idea, folder_name, coder, client, client_model, engine=args.engine)
+                perform_writeup(idea, folder_name, coder, client, client_model, engine=engine)
             except Exception as e:
                 print(f"Failed to perform writeup: {e}")
                 return False
@@ -384,6 +402,8 @@ if __name__ == "__main__":
                     args.writeup,
                     args.improvement,
                     gpu_id,
+                    True,
+                    args.engine,
                 ),
             )
             p.start()
@@ -411,6 +431,8 @@ if __name__ == "__main__":
                     client_model,
                     args.writeup,
                     args.improvement,
+                    True,
+                    args.engine,
                 )
                 print(f"Completed idea: {idea['Name']}, Success: {success}")
             except Exception as e:
