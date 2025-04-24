@@ -93,8 +93,27 @@ def parse_arguments():
 
 
 def get_available_gpus(gpu_ids=None):
+    if not torch.cuda.is_available():
+        print("Warning: CUDA is not available on this system. GPU acceleration will be disabled.")
+        return [] # Return empty list if CUDA is not available
+
     if gpu_ids is not None:
-        return [int(gpu_id) for gpu_id in gpu_ids.split(",")]
+        try:
+            requested_gpus = [int(gpu_id.strip()) for gpu_id in gpu_ids.split(",")]
+            all_gpus = list(range(torch.cuda.device_count()))
+            # Validate requested GPUs
+            valid_gpus = [gpu for gpu in requested_gpus if gpu in all_gpus]
+            if len(valid_gpus) != len(requested_gpus):
+                print(f"Warning: Some requested GPU IDs are invalid or unavailable. Available GPUs: {all_gpus}. Using: {valid_gpus}")
+            if not valid_gpus:
+                 print("Warning: No valid GPUs found from the requested list. Disabling GPU usage.")
+                 return []
+            return valid_gpus
+        except ValueError:
+            print(f"Warning: Invalid format for --gpus argument: '{gpu_ids}'. Expected comma-separated integers. Detecting all available GPUs.")
+            # Fall through to detect all GPUs if format is invalid
+
+    # If gpu_ids is None or format was invalid, return all available GPUs
     return list(range(torch.cuda.device_count()))
 
 
@@ -341,13 +360,22 @@ if __name__ == "__main__":
 
     # Check available GPUs and adjust parallel processes if necessary
     available_gpus = get_available_gpus(args.gpus)
-    if args.parallel > len(available_gpus):
-        print(
-            f"Warning: Requested {args.parallel} parallel processes, but only {len(available_gpus)} GPUs available. Adjusting to {len(available_gpus)}."
-        )
-        args.parallel = len(available_gpus)
+    num_gpus = len(available_gpus) # Re-calculate num_gpus after get_available_gpus handles unavailability
 
-    print(f"Using GPUs: {available_gpus}")
+    if num_gpus == 0 and args.parallel > 0:
+         print("Warning: No GPUs available or CUDA is not enabled, but parallel > 0 requested. Forcing sequential execution.")
+         args.parallel = 0 # Force sequential if no GPUs
+    elif args.parallel > num_gpus > 0:
+        print(
+            f"Warning: Requested {args.parallel} parallel processes, but only {num_gpus} GPUs available. Adjusting to {num_gpus}."
+        )
+        args.parallel = num_gpus
+
+    print(f"Using GPUs: {available_gpus if num_gpus > 0 else 'None (CPU)'}") # Correctly shows None (CPU)
+    if args.parallel > 0:
+         print(f"Running up to {args.parallel} processes in parallel.")
+    else:
+         print("Running sequentially.")
 
     # Check LaTeX dependencies before proceeding
     if args.writeup == "latex" and not check_latex_dependencies():

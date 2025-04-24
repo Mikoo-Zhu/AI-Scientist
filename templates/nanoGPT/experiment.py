@@ -349,12 +349,8 @@ def train(dataset="shakespeare_char", out_dir="run_0", seed_offset=0):
     # DDP settings
     backend = "nccl"  # 'nccl', 'gloo', etc.
     # system
-    device = "cuda"  # Always use CUDA
-    dtype = (
-        "bfloat16"
-        if torch.cuda.is_available() and torch.cuda.is_bf16_supported()
-        else "float16"
-    )  # 'float32', 'bfloat16', or 'float16', the latter will auto implement a GradScaler
+    device = 'cpu' # force cpu usage
+    dtype = 'float32' # Ensure dtype reflects float32
     compile = True  # do not torch compile the model on macbooks
 
     # various inits, derived attributes, I/O setup
@@ -368,20 +364,31 @@ def train(dataset="shakespeare_char", out_dir="run_0", seed_offset=0):
     torch.manual_seed(1337 + seed_offset)
     torch.backends.cuda.matmul.allow_tf32 = True  # allow tf32 on matmul
     torch.backends.cudnn.allow_tf32 = True  # allow tf32 on cudnn
-    device_type = (
-        "cuda" if "cuda" in device else "cpu"
-    )  # for later use in torch.autocast
+    device_type = 'cuda' if 'cuda' in device else 'cpu' # for later use in torch.autocast
     # note: float16 data type will automatically use a GradScaler
-    ptdtype = {
-        "float32": torch.float32,
-        "bfloat16": torch.bfloat16,
-        "float16": torch.float16,
-    }[dtype]
-    ctx = (
-        nullcontext()
-        if device_type == "cpu"
-        else torch.amp.autocast(device_type=device_type, dtype=ptdtype)
-    )
+    # Adjust ptdtype logic for CPU
+    if device_type == 'cpu':
+        # CPU doesn't support float16 well, bf16 might work on newer CPUs, float32 is safe
+        if dtype == 'bfloat16':
+            # Check if bf16 is supported on CPU
+            try:
+                torch.zeros(1, device='cpu').to(torch.bfloat16)
+                ptdtype = torch.bfloat16
+                print("Using bfloat16 on CPU")
+            except:
+                print("Warning: bfloat16 not supported on this CPU, using float32")
+                ptdtype = torch.float32
+                dtype = 'float32' # Update dtype variable as well
+        else:
+            ptdtype = torch.float32 # Default to float32 on CPU
+            print("Using float32 on CPU")
+            dtype = 'float32' # Ensure dtype reflects float32
+    elif device_type == 'cuda':
+        # Original cuda logic
+        ptdtype = {'float32': torch.float32, 'bfloat16': torch.bfloat16, 'float16': torch.float16}[dtype]
+    else:
+        ptdtype = torch.float32 # Fallback
+    ctx = nullcontext() if device_type == 'cpu' else torch.amp.autocast(device_type=device_type, dtype=ptdtype)
 
     # poor man's data loader
     if out_dir == "run_0":
